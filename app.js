@@ -1,19 +1,42 @@
 const express = require("express");
 require("express-async-errors");
-
-const app = express();
-app.set("view engine", "ejs");
-app.use(require("body-parser").urlencoded({ extended: true }));
-
 require("dotenv").config(); // to load the .env file into the process.env object
 
+const app = express();
+const cookieParser = require("cookie-parser");
+const csrf = require("host-csrf");
+const helmet = require("helmet");
+const xss = require("xss-clean");
+const rateLimiter = require("express-rate-limit");
+
+app.set("view engine", "ejs");
+
+app.use(cookieParser(process.env.SESSION_SECRET));
+app.use(express.urlencoded({ extended: false }));
+app.use(require("body-parser").urlencoded({ extended: true }));
+
+const csrf_options = {
+   // protected_operations: ["PATCH"],
+   protected_content_types: ["application/json"],
+   development_mode: true,
+};
+const csrf_middleware = csrf(csrf_options); //initialise and return middlware
+app.use(csrf_middleware);
+app.use(
+   rateLimiter({
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      max: 100, // limit each IP to 100 requests per windowMs
+   })
+);
+app.use(helmet());
+app.use(xss());
 //middleware that manages user sessions in an Express application
 const session = require("express-session");
 
 /* Middleware that provides session storage based on MongoDB.
-* By passing session as an argument to require(“connect-mongodb-session”), we are telling
-* connect-mongodb-session to use the session management system provided by express-session.
-*/
+ * By passing session as an argument to require(“connect-mongodb-session”), we are telling
+ * connect-mongodb-session to use the session management system provided by express-session.
+ */
 const MongoDBStore = require("connect-mongodb-session")(session);
 const url = process.env.MONGO_URI;
 
@@ -63,7 +86,7 @@ app.use(require("connect-flash")());
 app.use(require("./middleware/storeLocals"));
 
 app.get("/", (req, res) => {
-  res.render("index");
+   res.render("index");
 });
 
 app.use("/sessions", require("./routes/sessionRoutes"));
@@ -71,6 +94,9 @@ app.use("/sessions", require("./routes/sessionRoutes"));
 const secretWordRouter = require("./routes/secretWord");
 const auth = require("./middleware/auth");
 app.use("/secretWord", auth, secretWordRouter);
+
+const jobsRouter = require("./routes/jobs");
+app.use("/jobs", auth, jobsRouter);
 
 app.use((req, res) => {
    res.status(404).send(`That page (${req.url}) was not found.`);
