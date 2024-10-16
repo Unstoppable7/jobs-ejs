@@ -38,12 +38,14 @@ const session = require("express-session");
  * connect-mongodb-session to use the session management system provided by express-session.
  */
 const MongoDBStore = require("connect-mongodb-session")(session);
-const url = process.env.MONGO_URI;
-
+let mongoURL = process.env.MONGO_URI;
+if (process.env.NODE_ENV == "test") {
+   mongoURL = process.env.MONGO_URI_TEST;
+}
 //A new instance of MongoDBStore is being created here, which is the storage where the sessions will be stored.
 const store = new MongoDBStore({
    // may throw an error, which won't be caught
-   uri: url,
+   uri: mongoURL,
    collection: "mySessions",
 });
 
@@ -85,6 +87,15 @@ app.use(require("connect-flash")());
 //res.locals is an object in Express that provides a space to store data that will be available to the view during the life cycle of the current request.
 app.use(require("./middleware/storeLocals"));
 
+app.use((req, res, next) => {
+   if (req.path == "/multiply") {
+      res.set("Content-Type", "application/json");
+   } else {
+      res.set("Content-Type", "text/html");
+   }
+   next();
+});
+
 app.get("/", (req, res) => {
    res.render("index");
 });
@@ -98,6 +109,16 @@ app.use("/secretWord", auth, secretWordRouter);
 const jobsRouter = require("./routes/jobs");
 app.use("/jobs", auth, jobsRouter);
 
+app.get("/multiply", (req, res) => {
+   const result = req.query.first * req.query.second;
+   if (result.isNaN) {
+      result = "NaN";
+   } else if (result == null) {
+      result = "null";
+   }
+   res.json({ result: result });
+});
+
 app.use((req, res) => {
    res.status(404).send(`That page (${req.url}) was not found.`);
 });
@@ -109,9 +130,9 @@ app.use((err, req, res, next) => {
 
 const port = process.env.PORT || 3000;
 
-const start = async () => {
+const start = () => {
    try {
-      await require("./db/connect")(process.env.MONGO_URI);
+      require("./db/connect")(process.env.MONGO_URI);
       app.listen(port, () =>
          console.log(`Server is listening on port ${port}...`)
       );
@@ -121,3 +142,4 @@ const start = async () => {
 };
 
 start();
+module.exports = { app };
